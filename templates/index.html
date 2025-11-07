@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DCF估值模型 - 股票估值工具</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>DCF估值模型</h1>
+            <p class="subtitle">基于贴现现金流的股票估值工具</p>
+        </header>
+
+        <!-- 输入表单 -->
+        <div class="card">
+            <h2>输入参数</h2>
+            <form id="valuationForm">
+                <div class="form-group">
+                    <label for="ticker">股票代码 <span class="required">*</span></label>
+                    <input type="text" id="ticker" name="ticker" placeholder="例如: TSLA, AAPL, MSFT" required>
+                    <small class="help-text">常见代码: AAPL(苹果), TSLA(特斯拉), MSFT(微软), AMZN(亚马逊), GOOGL(谷歌)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="perpetualGrowth">永续增长率 (%) <span class="required">*</span></label>
+                    <input type="number" id="perpetualGrowth" name="perpetualGrowth" value="2.5" step="0.1" min="0" max="10" required>
+                    <small class="help-text">通常在1.5% - 3.5%之间，代表公司的长期增长率</small>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="useCustomGrowth" name="useCustomGrowth">
+                        使用自定义营收增长率
+                    </label>
+                </div>
+
+                <div id="customGrowthSection" class="hidden">
+                    <p class="section-title">未来5年营收增长率 (%)</p>
+                    <div class="growth-inputs">
+                        <div class="growth-input-group">
+                            <label>第1年</label>
+                            <input type="number" id="growth1" step="0.1" min="0" max="100" placeholder="20">
+                        </div>
+                        <div class="growth-input-group">
+                            <label>第2年</label>
+                            <input type="number" id="growth2" step="0.1" min="0" max="100" placeholder="18">
+                        </div>
+                        <div class="growth-input-group">
+                            <label>第3年</label>
+                            <input type="number" id="growth3" step="0.1" min="0" max="100" placeholder="16">
+                        </div>
+                        <div class="growth-input-group">
+                            <label>第4年</label>
+                            <input type="number" id="growth4" step="0.1" min="0" max="100" placeholder="14">
+                        </div>
+                        <div class="growth-input-group">
+                            <label>第5年</label>
+                            <input type="number" id="growth5" step="0.1" min="0" max="100" placeholder="12">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button type="submit" id="calculateBtn" class="btn btn-primary">开始估值</button>
+                    <button type="button" id="resetBtn" class="btn btn-secondary">重置</button>
+                </div>
+            </form>
+
+            <div id="loadingIndicator" class="loading hidden">
+                <div class="spinner"></div>
+                <p>正在计算估值，请稍候...</p>
+            </div>
+        </div>
+
+        <!-- 估值结果 -->
+        <div id="resultsSection" class="hidden">
+            <!-- 主要结果 -->
+            <div class="card result-card">
+                <h2>估值结果</h2>
+                <div class="result-grid">
+                    <div class="result-item highlight">
+                        <div class="result-label">DCF估值</div>
+                        <div class="result-value" id="dcfValue">$0.00</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">当前股价</div>
+                        <div class="result-value" id="currentPrice">$0.00</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">估值差异</div>
+                        <div class="result-value" id="premiumDiscount">0.00%</div>
+                    </div>
+                    <div class="result-item highlight">
+                        <div class="result-label">投资建议</div>
+                        <div class="result-value recommendation" id="recommendation">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 企业价值详情 -->
+            <div class="card">
+                <h2>企业价值详情</h2>
+                <div class="details-grid">
+                    <div class="detail-row">
+                        <span class="detail-label">企业价值 (EV)</span>
+                        <span class="detail-value" id="enterpriseValue">$0.00B</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">股权价值</span>
+                        <span class="detail-value" id="equityValue">$0.00B</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">现金</span>
+                        <span class="detail-value" id="cash">$0.00B</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">债务</span>
+                        <span class="detail-value" id="debt">$0.00B</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">流通股数</span>
+                        <span class="detail-value" id="sharesOutstanding">0.00B股</span>
+                    </div>
+                    <div class="detail-row highlight">
+                        <span class="detail-label">WACC (加权平均资本成本)</span>
+                        <span class="detail-value" id="wacc">0.00%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WACC计算详情 -->
+            <div class="card" id="waccDetailsCard">
+                <h2>WACC计算详情</h2>
+                <div class="details-grid">
+                    <div class="detail-row">
+                        <span class="detail-label">无风险利率</span>
+                        <span class="detail-value" id="riskFreeRate">0.00%</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Beta系数</span>
+                        <span class="detail-value" id="beta">0.0000</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">市场风险溢价</span>
+                        <span class="detail-value" id="marketRiskPremium">0.00%</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">股权成本</span>
+                        <span class="detail-value" id="costOfEquity">0.00%</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">债务成本</span>
+                        <span class="detail-value" id="costOfDebt">0.00%</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">股权权重</span>
+                        <span class="detail-value" id="weightEquity">0.00%</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">债务权重</span>
+                        <span class="detail-value" id="weightDebt">0.00%</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">公司税率</span>
+                        <span class="detail-value" id="taxRate">0.00%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 财务预测 -->
+            <div class="card">
+                <h2>未来5年财务预测</h2>
+                <div class="table-responsive">
+                    <table id="forecastTable">
+                        <thead>
+                            <tr>
+                                <th>年份</th>
+                                <th>营收 (十亿美元)</th>
+                                <th>自由现金流 (十亿美元)</th>
+                                <th>营收增长率</th>
+                                <th>FCF利润率</th>
+                            </tr>
+                        </thead>
+                        <tbody id="forecastTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 敏感性分析 -->
+            <div class="card" id="sensitivityCard">
+                <h2>敏感性分析</h2>
+                <p class="help-text">不同WACC和永续增长率组合下的每股价值</p>
+                <div class="table-responsive">
+                    <table id="sensitivityTable">
+                    </table>
+                </div>
+            </div>
+
+            <!-- 导出按钮 -->
+            <div class="card">
+                <h2>导出报告</h2>
+                <button id="exportExcelBtn" class="btn btn-success">导出Excel报告</button>
+                <p class="help-text">将完整的估值分析导出为Excel文件</p>
+            </div>
+
+            <!-- 风险提示 -->
+            <div class="card warning-card">
+                <h3>风险提示</h3>
+                <ul>
+                    <li>DCF估值对假设非常敏感，小的参数变化可能导致较大的估值差异</li>
+                    <li>WACC基于历史数据估算，可能不反映未来的资本成本变化</li>
+                    <li>实际股价受多种因素影响，包括市场情绪、行业趋势等</li>
+                    <li>建议结合其他估值方法（如市盈率、市净率）综合判断</li>
+                    <li>本工具仅供参考，不构成投资建议</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>DCF估值模型 | 基于贴现现金流方法 | 数据来源: Yahoo Finance</p>
+    </footer>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
